@@ -46,7 +46,7 @@ public class Main {
 
             Slave slave = SlaveFactory.create(irisConfig);
             slave.start();
-            //slave.console();
+            slave.console();
 
 
         } catch (IrisException e) {

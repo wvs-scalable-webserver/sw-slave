@@ -8,6 +8,10 @@ import de.progme.thor.client.pub.Publisher;
 import de.progme.thor.client.pub.PublisherFactory;
 import de.progme.thor.client.sub.Subscriber;
 import de.progme.thor.client.sub.SubscriberFactory;
+import de.wvs.sw.shared.application.SWSlave;
+import de.wvs.sw.slave.channel.ChannelManager;
+import de.wvs.sw.slave.channel.packets.connection.ConnectPacket;
+import de.wvs.sw.slave.channel.packets.connection.DisconnectPacket;
 import de.wvs.sw.slave.command.Command;
 import de.wvs.sw.slave.command.CommandManager;
 import de.wvs.sw.slave.command.impl.DebugCommand;
@@ -41,15 +45,23 @@ public class Slave {
     @Getter
     private IrisConfig config;
 
+    @Getter
     private ScheduledExecutorService scheduledExecutorService;
+
+    @Getter
+    private SWSlave slave;
 
     @Getter
     private CommandManager commandManager;
 
     private Scanner scanner;
 
+    @Getter
     private Publisher publisher;
+    @Getter
     private Subscriber subscriber;
+    @Getter
+    private ChannelManager channelManager;
 
     private RestServer restServer;
 
@@ -64,6 +76,8 @@ public class Slave {
 
         this.scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
 
+        this.slave = new SWSlave();
+
         this.commandManager = new CommandManager();
         commandManager.addCommand(new HelpCommand("help", "List of available commands", "h"));
         commandManager.addCommand(new EndCommand("end", "Stops the load balancer", "stop", "exit"));
@@ -71,7 +85,12 @@ public class Slave {
         commandManager.addCommand(new StatsCommand("stats", "Shows live stats", "s"));
 
         this.startThor();
+        this.startCommunication();
+
         this.startRestServer();
+
+        this.channelManager.send(new ConnectPacket(this.slave));
+        this.channelManager.initializeHeartbeat();
     }
 
     public void stop() {
@@ -81,16 +100,13 @@ public class Slave {
         // Close the scanner
         scanner.close();
 
-        try {
-            this.restServer.stop();
-        } catch (Exception e) {
-            logger.warn("RESTful API server already stopped");
-        }
+        this.channelManager.send(new DisconnectPacket(this.slave));
 
-        this.publisher.disconnect();
-        this.subscriber.disconnect();
+        this.stopRestServer();
 
-        scheduledExecutorService.shutdown();
+        this.stopThor();
+
+        this.scheduledExecutorService.shutdown();
 
         logger.info("Slave has been stopped");
     }
@@ -98,6 +114,14 @@ public class Slave {
     private void startRestServer() {
         restServer = new RestServer(this.config);
         restServer.start();
+    }
+
+    private void stopRestServer() {
+        try {
+            this.restServer.stop();
+        } catch (Exception e) {
+            logger.warn("RESTful API server already stopped");
+        }
     }
 
     private void startThor() {
@@ -109,6 +133,16 @@ public class Slave {
         this.subscriber = SubscriberFactory.create(host, port);
 
         logger.warn("Thor started");
+    }
+
+    private void startCommunication() {
+        this.channelManager = new ChannelManager();
+        this.channelManager.subscribe();
+    }
+
+    private void stopThor() {
+        this.publisher.disconnect();
+        this.subscriber.disconnect();
     }
 
     public void console() {
