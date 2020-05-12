@@ -39,6 +39,9 @@ public class Main {
         try {
             IrisConfig irisConfig = Iris.from(config)
                     .def(new Header("general"), new Key("debug"), new Value("true"))
+                    .def(new Header("general"), new Key("master"), new Value("http://localhost:6000/master"))
+                    .def(new Header("networking"), new Key("host"), new Value("localhost"))
+                    .def(new Header("networking"), new Key("portRange"), new Value("10000"), new Value("10999"))
                     .def(new Header("thor"), new Key("host"), new Value("localhost"), new Value("1337"))
                     .build();
 

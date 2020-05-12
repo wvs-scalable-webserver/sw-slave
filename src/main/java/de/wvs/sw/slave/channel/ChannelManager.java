@@ -5,6 +5,8 @@ import de.progme.thor.client.sub.Subscriber;
 import de.wvs.sw.slave.Slave;
 import de.wvs.sw.slave.channel.impl.MasterChannel;
 import de.wvs.sw.slave.channel.packets.connection.HeartbeatPacket;
+import org.json.JSONML;
+import org.json.JSONObject;
 
 import java.util.concurrent.TimeUnit;
 
@@ -24,12 +26,10 @@ public class ChannelManager {
     }
 
     public void subscribe() {
-
         this.subscriber.subscribeMulti(MasterChannel.class);
     }
 
     public void send(Packet packet) {
-
         this.publisher.publish(packet.getChannel(), packet.getData());
     }
 

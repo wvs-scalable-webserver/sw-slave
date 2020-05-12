@@ -1,5 +1,13 @@
 general:
     debug true
+    master http://localhost:6000/master
+
+networking:
+    host localhost
+    portRange 10000 10999
 
 rest:
     server localhost 7000
+
+thor:
+    host localhost 1337

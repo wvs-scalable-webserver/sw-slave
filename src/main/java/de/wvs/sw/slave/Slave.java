@@ -1,6 +1,9 @@
 package de.wvs.sw.slave;
 
 import ch.qos.logback.classic.Level;
+import com.google.gson.Gson;
+import de.progme.hermes.client.HermesClient;
+import de.progme.hermes.client.HermesClientFactory;
 import de.progme.iris.IrisConfig;
 import de.progme.iris.config.Header;
 import de.progme.iris.config.Key;
@@ -9,6 +12,7 @@ import de.progme.thor.client.pub.PublisherFactory;
 import de.progme.thor.client.sub.Subscriber;
 import de.progme.thor.client.sub.SubscriberFactory;
 import de.wvs.sw.shared.application.SWSlave;
+import de.wvs.sw.slave.application.ApplicationManager;
 import de.wvs.sw.slave.channel.ChannelManager;
 import de.wvs.sw.slave.channel.packets.connection.ConnectPacket;
 import de.wvs.sw.slave.channel.packets.connection.DisconnectPacket;
@@ -57,6 +61,9 @@ public class Slave {
     private Scanner scanner;
 
     @Getter
+    private HermesClient restClient;
+
+    @Getter
     private Publisher publisher;
     @Getter
     private Subscriber subscriber;
@@ -64,6 +71,9 @@ public class Slave {
     private ChannelManager channelManager;
 
     private RestServer restServer;
+
+    @Getter
+    private ApplicationManager applicationManager;
 
     public Slave(IrisConfig config) {
 
@@ -74,15 +84,19 @@ public class Slave {
 
     public void start() {
 
-        this.scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+        this.scheduledExecutorService = Executors.newScheduledThreadPool(1000);
 
-        this.slave = new SWSlave();
+        String host = this.config.getHeader("networking").getKey("host").getValue(0).asString();
+        Key portRange = this.config.getHeader("networking").getKey("portRange");
+        this.slave = new SWSlave(host, portRange.getValue(0).asInt(), portRange.getValue(1).asInt());
 
         this.commandManager = new CommandManager();
         commandManager.addCommand(new HelpCommand("help", "List of available commands", "h"));
         commandManager.addCommand(new EndCommand("end", "Stops the load balancer", "stop", "exit"));
         commandManager.addCommand(new DebugCommand("debug", "Turns the debug mode on/off", "d"));
         commandManager.addCommand(new StatsCommand("stats", "Shows live stats", "s"));
+
+        this.initializeRestClient();
 
         this.startThor();
         this.startCommunication();
@@ -91,6 +105,8 @@ public class Slave {
 
         this.channelManager.send(new ConnectPacket(this.slave));
         this.channelManager.initializeHeartbeat();
+
+        this.applicationManager = new ApplicationManager();
     }
 
     public void stop() {
@@ -99,6 +115,8 @@ public class Slave {
 
         // Close the scanner
         scanner.close();
+
+        this.applicationManager.stop();
 
         this.channelManager.send(new DisconnectPacket(this.slave));
 
@@ -111,6 +129,10 @@ public class Slave {
         logger.info("Slave has been stopped");
     }
 
+    private void initializeRestClient() {
+        this.restClient = HermesClientFactory.create(this.config.getHeader("general").getKey("master").getValue(0).asString());
+    }
+
     private void startRestServer() {
         restServer = new RestServer(this.config);
         restServer.start();
@@ -120,7 +142,7 @@ public class Slave {
         try {
             this.restServer.stop();
         } catch (Exception e) {
-            logger.warn("RESTful API server already stopped");
+            logger.debug("RESTful API server already stopped");
         }
     }
 
@@ -130,9 +152,9 @@ public class Slave {
         String host = hostKey.getValue(0).asString();
         int port = hostKey.getValue(1).asInt();
         this.publisher = PublisherFactory.create(host, port);
-        this.subscriber = SubscriberFactory.create(host, port);
+        this.subscriber = SubscriberFactory.create(host, port, "slave-" + this.slave.getUuid().toString());
 
-        logger.warn("Thor started");
+        logger.debug("Thor started");
     }
 
     private void startCommunication() {
@@ -141,8 +163,9 @@ public class Slave {
     }
 
     private void stopThor() {
-        this.publisher.disconnect();
-        this.subscriber.disconnect();
+
+        this.publisher.disconnect(true);
+        this.subscriber.disconnect(true);
     }
 
     public void console() {
